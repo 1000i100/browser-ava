@@ -3,7 +3,7 @@ import { createReadStream, readFileSync } from "fs";
 import { chromium } from "playwright";
 import Koa from "koa";
 import Router from "koa-better-router";
-import { program } from "commander";
+import { program, Option } from "commander";
 
 const utf8EncodingOptions = { encoding: "utf8" };
 
@@ -20,8 +20,9 @@ program
   .description(description)
   .version(version)
   .argument("<tests...>")
+  .addOption(new Option('-p, --port <port>', 'use a custom port number').default('8080').env('PORT'))
   .action(async (tests, options) => {
-    const { server, port } = await createServer(tests);
+    const { server, port } = await createServer(tests, options);
 
     const browser = await chromium.launch({ headless });
     const page = await browser.newPage();
@@ -30,18 +31,15 @@ program
 
 program.parse(process.argv);
 
-async function createServer(testFiles) {
-  const pkg = JSON.parse(
-    await readFileSync("package.json", utf8EncodingOptions)
-  );
+async function createServer(testFiles, options) {
+  const port = parseInt(options.port);
 
   const importmap = {
     imports: {
-      ava: "./src/browser/ava.mjs"
+      ava: "./ava.mjs"
     }
   };
 
-  let port = 8080;
 
   const app = new Koa();
   const router = Router();
@@ -74,7 +72,11 @@ async function createServer(testFiles) {
 
   const esm = (ctx, next) => {
     ctx.response.type = "text/javascript";
-    ctx.body = createReadStream(
+    if(-1 !== ctx.request.path.indexOf('/ava.mjs'))
+      ctx.body = createReadStream(
+          new URL("./browser/ava.mjs", import.meta.url).pathname
+      );
+    else ctx.body = createReadStream(
       new URL("." + ctx.request.path, import.meta.url).pathname
     );
   };
